@@ -1,5 +1,7 @@
 module github.com/ipfs/go-blockservice
 
+go 1.16
+
 require (
 	github.com/ipfs/go-bitswap v0.1.0
 	github.com/ipfs/go-block-format v0.0.2
@@ -14,4 +16,7 @@ require (
 	github.com/ipfs/go-ipfs-util v0.0.1
 	github.com/ipfs/go-log v0.0.1
 	github.com/ipfs/go-verifcid v0.0.1
+	metrics v0.0.0-00010101000000-000000000000
 )
+
+replace metrics => ./../metrics/

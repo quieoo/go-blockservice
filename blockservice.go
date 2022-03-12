@@ -6,15 +6,15 @@ package blockservice
 import (
 	"context"
 	"errors"
-	"io"
-	"sync"
-
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	exchange "github.com/ipfs/go-ipfs-exchange-interface"
 	logging "github.com/ipfs/go-log"
 	"github.com/ipfs/go-verifcid"
+	"io"
+	"metrics"
+	"sync"
 )
 
 var log = logging.Logger("blockservice")
@@ -220,7 +220,6 @@ func getBlock(ctx context.Context, c cid.Cid, bs blockstore.Blockstore, fget fun
 	if err != nil {
 		return nil, err
 	}
-
 	block, err := bs.Get(c)
 	if err == nil {
 		return block, nil
@@ -259,6 +258,7 @@ func (s *blockService) GetBlocks(ctx context.Context, ks []cid.Cid) <-chan block
 }
 
 func getBlocks(ctx context.Context, ks []cid.Cid, bs blockstore.Blockstore, fget func() exchange.Fetcher) <-chan blocks.Block {
+	//metrics.PrintStack(20)
 	out := make(chan blocks.Block)
 
 	go func() {
@@ -348,11 +348,17 @@ func (s *Session) getSession() exchange.Fetcher {
 
 // GetBlock gets a block in the context of a request session
 func (s *Session) GetBlock(ctx context.Context, c cid.Cid) (blocks.Block, error) {
+
+	metrics.BDMonitor.NewBlockEnevt(c, 0)
+	metrics.BDMonitor.BlockServiceGet(c)
 	return getBlock(ctx, c, s.bs, s.getSession) // hash security
 }
 
 // GetBlocks gets blocks in the context of a request session
 func (s *Session) GetBlocks(ctx context.Context, ks []cid.Cid) <-chan blocks.Block {
+
+	metrics.BDMonitor.NewBlockEnevts(ks, 1)
+	metrics.BDMonitor.BlockServiceGets(ks)
 	return getBlocks(ctx, ks, s.bs, s.getSession) // hash security
 }
 
