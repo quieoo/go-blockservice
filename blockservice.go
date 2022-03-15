@@ -349,7 +349,7 @@ func (s *Session) getSession() exchange.Fetcher {
 // GetBlock gets a block in the context of a request session
 func (s *Session) GetBlock(ctx context.Context, c cid.Cid) (blocks.Block, error) {
 
-	metrics.BDMonitor.NewBlockEnevt(c, 0)
+	metrics.BDMonitor.NewBlockEvent(c, 0)
 	metrics.BDMonitor.BlockServiceGet(c)
 	return getBlock(ctx, c, s.bs, s.getSession) // hash security
 }
