@@ -12,6 +12,8 @@ import (
 	exchange "github.com/ipfs/go-ipfs-exchange-interface"
 	logging "github.com/ipfs/go-log"
 	"github.com/ipfs/go-verifcid"
+	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p-core/routing"
 	"io"
 	"metrics"
 	"sync"
@@ -360,6 +362,87 @@ func (s *Session) GetBlocks(ctx context.Context, ks []cid.Cid) <-chan blocks.Blo
 	metrics.BDMonitor.NewBlockEnevts(ks, 1)
 	metrics.BDMonitor.BlockServiceGets(ks)
 	return getBlocks(ctx, ks, s.bs, s.getSession) // hash security
+}
+
+// GetBlocks gets blocks in the context of a request session
+func (s *Session) GetBlocksFrom(ctx context.Context, ks []cid.Cid, p peer.ID) <-chan blocks.Block {
+	return getBlocksFrom(ctx, ks, p, s.bs, s.getSession) // hash security
+}
+
+func (s *Session) PeerConnect(p peer.ID) {
+	s.getSession().PeerConnect(p)
+}
+func (s *Session) GetRouting() routing.ContentRouting {
+	return s.getSession().GetRouting()
+}
+
+func (s *Session) GetPeers() []peer.ID {
+	return s.getSession().GetPeers()
+}
+
+func getBlocksFrom(ctx context.Context, ks []cid.Cid, p peer.ID, bs blockstore.Blockstore, fget func() exchange.Fetcher) <-chan blocks.Block {
+
+	out := make(chan blocks.Block)
+	go func() {
+		defer close(out)
+
+		allValid := true
+		for _, c := range ks {
+			if err := verifcid.ValidateCid(c); err != nil {
+				allValid = false
+				break
+			}
+		}
+
+		if !allValid {
+			ks2 := make([]cid.Cid, 0, len(ks))
+			for _, c := range ks {
+				// hash security
+				if err := verifcid.ValidateCid(c); err == nil {
+					ks2 = append(ks2, c)
+				} else {
+					log.Errorf("unsafe CID (%s) passed to blockService.GetBlocks: %s", c, err)
+				}
+			}
+			ks = ks2
+		}
+
+		var misses []cid.Cid
+		for _, c := range ks {
+			hit, err := bs.Get(c)
+			if err != nil {
+				misses = append(misses, c)
+				continue
+			}
+			select {
+			case out <- hit:
+
+			case <-ctx.Done():
+				return
+			}
+		}
+
+		if len(misses) == 0 || fget == nil {
+			return
+		}
+
+		f := fget() // don't load exchange unless we have to
+		rblocks, err := f.GetBlocksFrom(ctx, misses, p)
+		if err != nil {
+			log.Debugf("Error with GetBlocks: %s", err)
+			return
+		}
+
+		for b := range rblocks {
+			log.Event(ctx, "BlockService.BlockFetched", b.Cid())
+			select {
+			case out <- b:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	return out
 }
 
 var _ BlockGetter = (*Session)(nil)
